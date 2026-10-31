@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MY ALICE — панель управления</title>
+<style>
+:root{--glow:#168bff;--brightness:.75}
+*{box-sizing:border-box}
+body{margin:0;padding:22px;background:#080d1b;color:#f5f7ff;font:16px Arial,sans-serif;transition:.25s}
+main{max-width:650px;margin:auto}
+h1{text-align:center;color:var(--glow);letter-spacing:4px;text-shadow:0 0 18px var(--glow)}
+.subtitle{text-align:center;color:#9eb3d1}
+.card{background:#111c32;border:1px solid #263c5e;border-radius:20px;padding:20px;margin:16px 0}
+.indicator{width:94px;height:94px;border-radius:50%;margin:20px auto;background:var(--glow);opacity:var(--brightness);box-shadow:0 0 18px var(--glow),0 0 48px var(--glow);animation:pulse 1.8s ease-in-out infinite alternate}
+@keyframes pulse{to{transform:scale(1.07);filter:brightness(1.25)}}
+.colors{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+button,select,input{font:inherit;width:100%;padding:12px;margin:6px 0;border-radius:11px;border:1px solid #345276;background:#192b48;color:white}
+button{cursor:pointer}button:hover{border-color:var(--glow);box-shadow:0 0 10px var(--glow)}
+.colors button{height:46px;border:0;color:#fff;text-shadow:0 1px 3px #000}
+#chat{min-height:70px;white-space:pre-wrap;line-height:1.5;color:#dce8fa}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.small{font-size:13px;color:#a9bad2;line-height:1.5}
+body.light{background:#edf1f8;color:#172033}
+body.light .card{background:white;border-color:#d4ddeb}
+body.light #chat{color:#172033}
+body.light button,body.light select,body.light input{background:#f1f4f9;color:#172033}
+@media(max-width:420px){.colors{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<main>
+  <h1>MY ALICE</h1>
+  <p class="subtitle">SMART AI · MULTIPLE VOICE · RGB CONTROL</p>
+
+  <section class="card">
+    <div class="indicator" id="indicator"></div>
+    <h2 style="text-align:center">Индикатор MY ALICE</h2>
+    <p id="status" class="subtitle">Система готова</p>
+  </section>
+
+  <section class="card">
+    <h2>Цвет индикатора</h2>
+    <div class="colors">
+      <button style="background:#168bff" data-color="#168bff">Синий</button>
+      <button style="background:#a020f0" data-color="#a020f0">Фиолетовый</button>
+      <button style="background:#ff3030" data-color="#ff3030">Красный</button>
+      <button style="background:#00d878" data-color="#00d878">Зелёный</button>
+      <button style="background:#ff69b4" data-color="#ff69b4">Розовый</button>
+      <button style="background:#ffd700" data-color="#ffd700">Жёлтый</button>
+      <button style="background:#00d9ff" data-color="#00d9ff">Голубой</button>
+      <button style="background:#fff;color:#222" data-color="#ffffff">Белый</button>
+    </div>
+    <h3>Яркость</h3>
+    <input id="brightness" type="range" min="10" max="100" value="75">
+  </section>
+
+  <section class="card">
+    <h2>Голос панели</h2>
+    <p class="small">Показываются русские голоса, которые доступны в этом браузере или устройстве. Набор голосов зависит от платформы.</p>
+    <select id="voiceList"><option>Загрузка голосов…</option></select>
+    <div class="row">
+      <button id="testVoice">Проверить голос</button>
+      <button id="stopVoice">Остановить</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Оформление</h2>
+    <div class="row">
+      <button id="darkTheme">Тёмная тема</button>
+      <button id="lightTheme">Светлая тема</button>
+    </div>
+    <button id="animation">Включить / выключить анимацию</button>
+  </section>
+
+  <section class="card">
+    <h2>Общение с MY ALICE</h2>
+    <div id="chat" aria-live="polite">Привет! Напиши вопрос, и я постараюсь помочь.</div>
+    <input id="question" maxlength="2000" placeholder="Напиши свой вопрос…">
+    <button id="send">Отправить</button>
+  </section>
+
+  <p class="small">Это самостоятельная панель MY ALICE. Она не меняет физический индикатор колонки или системный голос Алисы.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const root = document.documentElement;
+const userId = localStorage.getItem("myAliceUserId") ||
+  ("panel-" + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)));
+localStorage.setItem("myAliceUserId", userId);
+
+let selectedVoice = null;
+let voices = [];
+
+function applySettings(s) {
+  root.style.setProperty("--glow", s.color || "#168bff");
+  root.style.setProperty("--brightness", String((s.brightness || 75) / 100));
+  $("brightness").value = s.brightness || 75;
+  document.body.classList.toggle("light", s.theme === "light");
+  if (s.voice) localStorage.setItem("myAliceVoice", s.voice);
+}
+
+async function saveSettings() {
+  const settings = {
+    color: getComputedStyle(root).getPropertyValue("--glow").trim(),
+    brightness: Number($("brightness").value),
+    voice: localStorage.getItem("myAliceVoice") || "default",
+    theme: document.body.classList.contains("light") ? "light" : "dark"
+  };
+  try {
+    const r = await fetch("/api/settings", {
+      method: "PUT",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({userId, settings})
+    });
+    if (!r.ok) throw new Error("save failed");
+    $("status").textContent = "Настройки сохранены";
+  } catch {
+    $("status").textContent = "Не удалось сохранить настройки на сервере";
+  }
+}
+
+document.querySelectorAll("[data-color]").forEach(button => {
+  button.addEventListener("click", () => {
+    root.style.setProperty("--glow", button.dataset.color);
+    saveSettings();
+  });
+});
+$("brightness").addEventListener("input", () => {
+  root.style.setProperty("--brightness", String(Number($("brightness").value)/100));
+});
+$("brightness").addEventListener("change", saveSettings);
+$("darkTheme").addEventListener("click", () => {document.body.classList.remove("light");saveSettings();});
+$("lightTheme").addEventListener("click", () => {document.body.classList.add("light");saveSettings();});
+$("animation").addEventListener("click", () => {
+  $("indicator").style.animation = $("indicator").style.animation === "none" ? "" : "none";
+});
+
+function loadVoices() {
+  if (!("speechSynthesis" in window)) {
+    $("voiceList").innerHTML = "<option value=''>Синтез речи не поддерживается</option>";
+    return;
+  }
+  voices = speechSynthesis.getVoices().filter(v => v.lang.toLowerCase().startsWith("ru"));
+  const select = $("voiceList");
+  select.replaceChildren();
+  if (!voices.length) {
+    select.add(new Option("Русские голоса не найдены", ""));
+    return;
+  }
+  voices.forEach((v, i) => select.add(new Option(`${v.name} (${v.lang})`, String(i))));
+  const saved = Number(localStorage.getItem("myAliceVoiceIndex") || 0);
+  select.selectedIndex = Math.min(saved, voices.length - 1);
+  selectedVoice = voices[select.selectedIndex];
+}
+if ("speechSynthesis" in window) {
+  speechSynthesis.onvoiceschanged = loadVoices;
+  loadVoices();
+}
+$("voiceList").addEventListener("change", async () => {
+  selectedVoice = voices[Number($("voiceList").value)] || null;
+  localStorage.setItem("myAliceVoiceIndex", $("voiceList").value);
+  localStorage.setItem("myAliceVoice", "browser");
+  await saveSettings();
+});
+function speak(text) {
+  if (!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "ru-RU";
+  if (selectedVoice) utterance.voice = selectedVoice;
+  speechSynthesis.speak(utterance);
+}
+$("testVoice").addEventListener("click", () => speak("Привет! Я MY ALICE. Голосовая система работает."));
+$("stopVoice").addEventListener("click", () => speechSynthesis?.cancel());
+
+async function ask() {
+  const question = $("question").value.trim();
+  if (!question) return;
+  $("chat").textContent = "MY ALICE думает…";
+  $("send").disabled = true;
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({question})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.answer || "Ошибка запроса");
+    $("chat").textContent = data.answer;
+    speak(data.answer);
+  } catch (e) {
+    $("chat").textContent = e.message || "Не удалось подключиться к серверу.";
+  } finally {
+    $("send").disabled = false;
+  }
+}
+$("send").addEventListener("click", ask);
+$("question").addEventListener("keydown", e => {if(e.key === "Enter") ask();});
+
+(async function init() {
+  try {
+    const r = await fetch("/api/settings?userId=" + encodeURIComponent(userId));
+    if (r.ok) applySettings(await r.json());
+  } catch {}
+})();
+</script>
+</body>
+</html>
